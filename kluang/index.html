@@ -35,7 +35,14 @@ body{background:var(--bg);color:var(--ink);font-family:var(--f-body);overflow:hi
   padding:3px 6px;border-radius:3px;white-space:nowrap;transition:opacity .15s}
 .lbl.keep{background:rgba(255,255,255,.6);color:#68645C;font-style:italic}
 .lbl.on{background:#4A5A3F;color:#fff}
-.toolbar{z-index:3;position:absolute;left:16px;top:16px;display:flex;flex-wrap:wrap;gap:6px;max-width:calc(100% - 32px)}
+.menubtn{z-index:4;position:absolute;left:16px;top:16px;display:flex;align-items:center;gap:8px;font:600 13px var(--f-body);color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 12px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.10);-webkit-tap-highlight-color:transparent}
+.menubtn .ico{display:inline-flex;flex-direction:column;gap:3px;width:16px}.menubtn .ico i{display:block;height:2px;border-radius:1px;background:currentColor;transition:transform .18s,opacity .18s}
+.menubtn[aria-expanded="true"] .ico i:nth-child(1){transform:translateY(5px) rotate(45deg)}.menubtn[aria-expanded="true"] .ico i:nth-child(2){opacity:0}.menubtn[aria-expanded="true"] .ico i:nth-child(3){transform:translateY(-5px) rotate(-45deg)}
+.menubtn .cur{font:500 11px var(--f-mono);color:var(--muted);border-left:1px solid var(--line);padding-left:8px}
+.toolbar{z-index:3;position:absolute;left:16px;top:62px;display:flex;flex-direction:column;align-items:flex-start;gap:10px;max-width:calc(100% - 32px);max-height:calc(100% - 80px);overflow-y:auto;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px;box-shadow:0 12px 32px rgba(0,0,0,.16)}
+.toolbar[hidden]{display:none}
+.grp{display:flex;flex-direction:column;gap:5px;max-width:100%}.grp>span{font:600 10px var(--f-display);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.grp .row{display:flex;flex-wrap:wrap;gap:6px}
 .seg{display:flex;background:var(--panel);border:1px solid var(--line);border-radius:6px;overflow:hidden}
 .seg button,.tbtn{font:500 12px var(--f-body);color:var(--ink);background:transparent;border:0;padding:7px 11px;cursor:pointer}
 .tbtn{background:var(--panel);border:1px solid var(--line);border-radius:6px}
@@ -65,7 +72,7 @@ ul.rooms{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
 .tag{font:500 10px var(--f-mono);text-transform:uppercase;letter-spacing:.08em;color:var(--muted);border:1px dashed var(--line);padding:1px 5px;border-radius:3px}
 .note{font-size:12px;line-height:1.55;color:var(--muted);margin:0}
 .note b{color:var(--ink);font-weight:600}
-.gallery{position:absolute;inset:0;background:var(--scene);display:flex;flex-direction:column;gap:10px;padding-block:100px 16px;padding-inline:16px;z-index:2}
+.gallery{position:absolute;inset:0;background:var(--scene);display:flex;flex-direction:column;gap:10px;padding-block:68px 16px;padding-inline:16px;z-index:2}
 .gallery .tabs{display:flex;flex-wrap:wrap;gap:6px}
 .gallery figure{margin:0;flex:1;min-height:0;display:flex;flex-direction:column;gap:8px}
 .gallery img{flex:1;min-height:0;width:100%;object-fit:contain;border-radius:4px}
@@ -85,10 +92,11 @@ ul.rooms{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
 @media (max-width:760px){
   aside{top:auto;left:0;width:auto;height:62%;border-left:0;border-top:1px solid var(--line);border-radius:14px 14px 0 0;box-shadow:0 -12px 32px rgba(0,0,0,.16);padding-inline:16px}
   .hint{display:none}
-  .toolbar{left:8px;top:8px;gap:4px;max-width:calc(100% - 16px)}
+  .menubtn{left:8px;top:8px;padding:7px 10px;font-size:12px}
+  .toolbar{left:8px;top:52px;max-width:calc(100% - 16px);max-height:calc(100% - 64px);padding:10px}
   .seg button,.tbtn{padding:5px 8px;font-size:11px}
   .lbl{font-size:9px;padding:2px 4px}
-  .gallery{padding-block:150px 12px}
+  .gallery{padding-block:56px 12px}
 }
 @media (prefers-reduced-motion:reduce){.lbl{transition:none}}
 </style>
@@ -99,31 +107,39 @@ ul.rooms{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
   <div class="view" id="view">
     <canvas id="c" aria-label="3D model of the house, drag to orbit"></canvas>
     <div class="labels" id="labels"></div>
-    <div class="toolbar">
+    <button class="menubtn" id="v-menu" aria-expanded="false" aria-controls="toolbar"><span class="ico" aria-hidden="true"><i></i><i></i><i></i></span><span class="mlbl">Menu</span><span class="cur" id="menu-cur">Japandi</span></button>
+    <div class="toolbar" id="toolbar" hidden>
+      <div class="grp"><span>Design</span>
       <div class="seg" role="group" aria-label="Scheme">
         <button id="s-jap" aria-pressed="true">Japandi</button>
         <button id="s-bud" aria-pressed="false">Japandi RM100k</button>
         <button id="s-wabi" aria-pressed="false">Wabi-Sabi</button>
         <button id="s-orig" aria-pressed="false">Bare shell</button>
-      </div>
+      </div></div>
+      <div class="grp"><span>Walls</span>
       <div class="seg" role="group" aria-label="Wall height">
         <button id="m-cut" aria-pressed="true">Cutaway</button>
         <button id="m-full" aria-pressed="false">Full walls</button>
         <button id="m-roof" aria-pressed="false">Roof</button>
-      </div>
+      </div></div>
+      <div class="grp"><span>Walk in</span>
       <div class="seg" role="group" aria-label="Eye-level views">
         <button data-eye="entrance" aria-pressed="false">Entrance</button>
         <button data-eye="kitchen" aria-pressed="false">Kitchen</button>
         <button data-eye="master" aria-pressed="false">Master</button>
         <button data-eye="dining" aria-pressed="false">Dining</button>
         <button data-eye="porch" aria-pressed="false">Porch</button>
-      </div>
+      </div></div>
+      <div class="grp"><span>View</span><div class="row">
       <button class="tbtn" id="v-top" aria-pressed="false">Plan view</button>
       <button class="tbtn" id="v-lbl" aria-pressed="true">Labels</button>
       <button class="tbtn" id="v-reset">Reset</button>
+      </div></div>
+      <div class="grp"><span>More</span><div class="row">
       <button class="tbtn" id="v-ren" aria-pressed="false">Renders</button>
       <button class="tbtn" id="v-info" aria-pressed="false" aria-controls="details">Details</button>
       <button class="tbtn" id="v-fs" aria-pressed="false" hidden>Full screen</button>
+      </div></div>
     </div>
     <div class="gallery" id="gallery" hidden>
       <div style="display:flex;flex-wrap:wrap;gap:6px"><div class="seg" role="group" aria-label="Version" id="gver"></div><div class="tabs seg" role="group" aria-label="Render views" id="gtabs"></div></div>
@@ -197,6 +213,22 @@ ul.rooms{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
 </div>
 
 <script>
+// Menu (burger) toggle: hides all the controls behind one button
+(function(){
+  const mb=document.getElementById('v-menu'), tb=document.getElementById('toolbar'), cur=document.getElementById('menu-cur');
+  const set=on=>{ tb.hidden=!on; mb.setAttribute('aria-expanded',String(on)); mb.querySelector('.mlbl').textContent=on?'Close':'Menu'; };
+  mb.addEventListener('click',()=>set(tb.hidden));
+  const sync=()=>{ const b=tb.querySelector('[aria-label="Scheme"] [aria-pressed="true"]'); if(b) cur.textContent=b.textContent; };
+  tb.addEventListener('click',e=>{
+    const b=e.target.closest('button'); if(!b) return;
+    setTimeout(sync,0);
+    // Close after actions that change what you are looking at; keep open for quick scheme / wall comparisons
+    if(b.dataset.eye || ['v-top','v-reset','v-ren','v-info','v-fs'].includes(b.id)) set(false);
+  });
+  document.addEventListener('keydown',e=>{ if(e.key==='Escape') set(false); });
+  document.getElementById('c').addEventListener('pointerdown',()=>set(false));
+  document.getElementById('gallery').addEventListener('pointerdown',e=>{ if(!tb.contains(e.target)) set(false); });
+})();
 // Details panel and full-screen toggles (independent of the 3D viewer)
 (function(){
   const panel=document.getElementById('details'), btn=document.getElementById('v-info');
