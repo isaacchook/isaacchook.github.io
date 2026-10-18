@@ -151,10 +151,11 @@ function sel(id, path, val, options, label){
 function hasExamples(){
   return state.people.some(p => p.ex) || state.housing.items.some(i => i.ex) || state.family.items.some(i => i.ex) || state.reno.items.some(i => i.ex) || state.monthly.some(i => i.ex) || state.loan.ex;
 }
+const nm = (i) => (state.people[i].name || "").trim() || (i ? "Person B" : "Person A");
 const exBanner = () => hasExamples() ? `<div class="banner"><span>●</span><span><b>Example figures.</b> Rows tagged <span class="chip ex">Example</span> are placeholders, not your real numbers. Type over a value, or tap the tag to keep it as yours.</span></div>` : "";
 
 function renderOverview(R){
-  const {P, C} = R, A = P[0].p.name, B = P[1].p.name;
+  const {P, C} = R, A = nm(0), B = nm(1);
   const k = R.k, Q = R.loan;
   const stages = [
     {key:"housing", name:"Housing", due: (state.loan.keyDate && state.loan.keyDate.slice(0, 7) >= ymOf(new Date()) && Q.dpLeft) ? state.loan.keyDate.slice(0, 7) : "", cash: C.upCash + R.hCash * (1 + k), cpf: C.oaForUp + R.hCPF,
@@ -197,7 +198,7 @@ function renderOverview(R){
   const lateOther = stages.filter(st => st.late && st !== firstFail).map(st => st.name);
   if(lateOther.length) vText += ` ${listJoin(lateOther)} may not be ready in time either.`;
   if(state.monthly.length === 0) vText += ` <b>No monthly expenses entered yet</b>, so these dates are too optimistic. Add them on the Monthly tab.`;
-  const warnText = P.filter(x => x.oaDrain && x.instOA > 0).map(x => `${esc(x.p.name)}'s HDB instalment from CPF OA (${money(x.instOA)}/mo) is more than their monthly OA contribution, so their OA will run down. `).join("")
+  const warnText = P.filter(x => x.oaDrain && x.instOA > 0).map(x => `${esc(nm(state.people.indexOf(x.p)))}'s HDB instalment from CPF OA (${money(x.instOA)}/mo) is more than their monthly OA contribution, so their OA will run down. `).join("")
     + (R.loan.msr > 0.3 ? `The HDB instalment is ${Math.round(R.loan.msr * 100)}% of our gross income, above the 30% limit (MSR). ` : "")
     + (P.some(x => x.status === "bad") && P.some(x => x.status !== "bad") ? `One of us can't cover their own share; consider changing the split in Settings.` : "");
   const stLabel = st => st.state === "none" ? `<span class="chip">${st.key === "emergency" ? "No target set" : "Nothing planned"}</span>` : st.state === "good" ? '<span class="chip good">Enough</span>' : st.state === "warn" ? `<span class="chip warn">Short ${money(st.short)}</span>` : `<span class="chip bad">Short ${money(st.short)}</span>`;
@@ -252,9 +253,11 @@ function renderOverview(R){
     <div class="a">Add your figures to see the answer</div>
     <p>Start on <a href="housing.html">Housing</a> with your salaries, savings and CPF, then the HDB loan. Add your expenses on <a href="monthly.html">Monthly</a>, and your plans on <a href="renovation.html">Renovation</a> and <a href="family.html">Family Planning</a>. Already have an export file? Use <b>Import file</b> at the bottom of the page.</p>
   </div>
+  ${namesCard("e")}
 </section>`;
   return `<section class="panel" role="tabpanel" aria-labelledby="tab-overview">
   ${exBanner()}
+  ${defaultNames() ? namesCard("t") : ""}
   <div class="verdict ${vClass}">
     <div class="q">Can we afford it, step by step?</div>
     <div class="a">${headline}</div>
@@ -281,6 +284,7 @@ function renderOverview(R){
   <div class="card">
     <header><h2>Settings</h2></header>
     <div class="settings">
+      ${defaultNames() ? "" : nameFields("s")}
       <label for="s-split">${esc(A)} pays this % of planned spending${fld("s-split", "settings.splitA", state.settings.splitA, {label:"Split"})}</label>
       <label for="s-ct">Contingency on cash spending (%)${fld("s-ct", "settings.contingencyPct", state.settings.contingencyPct, {label:"Contingency"})}</label>
       <label for="s-cl">CPF monthly wage ceiling (S$)${fld("s-cl", "settings.ceiling", state.settings.ceiling, {label:"Ceiling"})}</label>
@@ -336,7 +340,7 @@ function renderHousing(R){
         <label>MediSave <span class="hint">(+${money(x.maM)} /mo)</span></label><div class="out num">${money(x.estMA)}</div>
         <label><b>Total CPF</b></label><div class="out num"><b>${money(x.cpf)}</b></div>
       </div></div>`; }).join("");
-  const L = state.loan, Q = R.loan, A = R.P[0].p.name, B = R.P[1].p.name;
+  const L = state.loan, Q = R.loan, A = nm(0), B = nm(1);
   const out = (l, v, bold, cls) => `<label>${bold ? "<b>" + l + "</b>" : l}</label><div class="out num ${cls || ""}">${bold ? "<b>" + v + "</b>" : v}</div>`;
   const warns = [];
   if(L.type === "HDB loan" && L.ltv > 75) warns.push("HDB loans are capped at 75% LTV.");
@@ -411,6 +415,13 @@ function renderHousing(R){
 </section>`;
 }
 
+const defaultNames = () => state.people[0].name === "Person A" && state.people[1].name === "Person B";
+const nameFields = id => `<label for="${id}-n0">First person's name${fld(id + "-n0", "people.0.name", state.people[0].name, {type:"text", label:"First person's name"})}</label>
+      <label for="${id}-n1">Second person's name${fld(id + "-n1", "people.1.name", state.people[1].name, {type:"text", label:"Second person's name"})}</label>`;
+const namesCard = id => `<div class="card names">
+    <header><h2>Who's budgeting?</h2><span class="hint">Your names appear on every page instead of Person A and Person B</span></header>
+    <div class="settings">${nameFields(id)}</div>
+  </div>`;
 function firstDue(items){ const d = items.filter(i => i.include && i.date && i.cost > i.paid).map(i => i.date).sort()[0]; return d || ""; }
 function efDesc(C){
   const S = state.settings;
@@ -420,7 +431,7 @@ function efDesc(C){
 function renderMonthly(R){
   const {P, C} = R, mi = moveInYM(), now = C.nowAfter;
   const personCard = i => {
-    const x = P[i], name = x.p.name, mine = state.monthly.filter(m => m.owner === i);
+    const x = P[i], name = nm(i), mine = state.monthly.filter(m => m.owner === i);
     const row = m => `<tr>
       <td class="namecell c-name">${fld("m-" + m.id + "-name", "monthly.#" + m.id + ".name", m.name, {type:"text", label:"Expense"})}${m.ex ? ` <button class="chip ex" data-act="keep" data-list="monthly" data-id="${m.id}">Example · keep</button>` : ""}</td>
       <td class="c-amt" data-label="Amount (S$)" style="min-width:100px">${fld("m-" + m.id + "-amt", "monthly.#" + m.id + ".amt", m.amt, {label:"Amount"})}</td>
@@ -448,7 +459,7 @@ function renderMonthly(R){
   // combined summary by category
   const catRow = (cat, after) => { const f = i => sum(state.monthly.filter(m => m.owner === i && (CATS.includes(m.cat) ? m.cat : "Other") === cat && applies(m, after)), perMonth) + (cat === "Home" && after ? P[i].hdbCash : 0); return [f(0), f(1)]; };
   const sumRows = CATS.map(cat => { const [a, b] = catRow(cat, now); const [a2, b2] = catRow(cat, true); return (a + b + a2 + b2) ? `<tr><td>${cat}</td><td class="r num">${money(a)}</td><td class="r num">${money(b)}</td><td class="r num">${money(a + b)}</td></tr>` : ""; }).join("");
-  const A = P[0].p.name, B = P[1].p.name;
+  const A = nm(0), B = nm(1);
   const line = (l, a, b, cls) => `<tr class="${cls || ""}"><td>${l}</td><td class="r num">${money(a)}</td><td class="r num">${money(b)}</td><td class="r num">${money(a + b)}</td></tr>`;
   const phaseNote = !mi ? `Set a move-in month so costs that start or stop when you move in are timed correctly. Until then, we assume you've already moved in.`
     : now ? `From ${fmtYM(mi)} you're living in the new flat, so "After we move in" costs apply now.` : `Until ${fmtYM(mi)}: "Always" + "Until we move in" costs. From then on: "Always" + "After we move in" costs.`;
@@ -519,7 +530,7 @@ function timelineCard(stages, C){
 }
 
 function renderEmergency(R){
-  const {P, C} = R, S = state.settings, A = P[0].p.name, B = P[1].p.name;
+  const {P, C} = R, S = state.settings, A = nm(0), B = nm(1);
   const months = C.expAfter > 0 ? C.efGross / C.expAfter : 0;
   const mRows = state.monthly.map(m => `<tr><td class="namecell c-name">${fld("m-" + m.id + "-name", "monthly.#" + m.id + ".name", m.name, {type:"text", label:"Expense"})}${m.ex ? ` <button class="chip ex" data-act="keep" data-list="monthly" data-id="${m.id}">Example · keep</button>` : ""}</td>
     <td class="c-a" data-label="${esc(A)}">${fld("m-" + m.id + "-a", "monthly.#" + m.id + ".a", m.a, {label:A})}</td><td class="c-b" data-label="${esc(B)}">${fld("m-" + m.id + "-b", "monthly.#" + m.id + ".b", m.b, {label:B})}</td>

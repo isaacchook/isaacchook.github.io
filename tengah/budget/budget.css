@@ -195,3 +195,4 @@ nav.tabs a:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .databar button:hover{border-color:var(--accent)}
 .databar button.danger{color:var(--bad)}
 .databar button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.verdict a,.note a{color:var(--accent)}
