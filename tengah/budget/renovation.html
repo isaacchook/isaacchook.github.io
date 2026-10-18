@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Tengah Budget · Renovation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Instrument+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="budget.css">
+</head>
+<body data-page="reno">
+<div class="wrap">
+  <header class="top">
+    <div>
+      <a class="back" href="../index.html">← Tengah 3D model</a>
+      <h1>Home &amp; Family Budget</h1>
+      <div class="sub">Savings, CPF, HDB and wedding plans for two, in S$. Every field saves automatically on this device.</div>
+    </div>
+    <div class="save" id="save"><span class="dot"></span><span id="saveText">Loading…</span></div>
+  </header>
+  <nav class="tabs" aria-label="Budget pages">
+    <a id="tab-overview" data-tab="overview" href="index.html">Overview</a>
+    <a id="tab-monthly" data-tab="monthly" href="monthly.html">Monthly</a>
+    <a id="tab-housing" data-tab="housing" href="housing.html">Housing</a>
+    <a id="tab-reno" data-tab="reno" href="renovation.html" aria-current="page"><span class="lg">Renovation</span><span class="sh">Reno</span></a>
+    <a id="tab-family" data-tab="family" href="family.html"><span class="lg">Family Planning</span><span class="sh">Family</span></a>
+    <a id="tab-emergency" data-tab="emergency" href="emergency.html"><span class="lg">Emergency Fund</span><span class="sh">Emergency</span></a>
+  </nav>
+  <main id="app"></main>
+  <footer class="databar">
+    <p>Your figures are saved only in this browser, never on this website. Use Export to back them up or move them to another phone, then Import there.</p>
+    <div class="acts">
+      <button type="button" id="btnExport">Export file</button>
+      <button type="button" id="btnImport">Import file</button>
+      <input type="file" id="fileImport" accept="application/json,.json" hidden>
+      <button type="button" id="btnClear" class="danger">Clear this device</button>
+    </div>
+  </footer>
+</div>
+<script src="budget.js"></script>
+</body>
+</html>
