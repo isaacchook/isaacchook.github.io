@@ -39,7 +39,7 @@ function normalize(d){
   out.people = [0,1].map(i => Object.assign(person(i ? "Person B" : "Person A"), (d.people || [])[i] || {}));
   out.housing = Object.assign({items:[]}, d.housing || {});
   out.family = Object.assign({angbao:0, items:[]}, d.family || {});
-  out.reno = Object.assign({cap:0, items:[]}, d.reno || {});
+  out.reno = Object.assign({cap:0, items:[], depPct:10, startPct:40, signYM:""}, d.reno || {});
   out.monthly = (d.monthly || []).flatMap(x => {
     const base = Object.assign({cat:"Other", freq:"month", when:"always", name:""}, x);
     if(base.owner === 0 || base.owner === 1) return [Object.assign({amt:0}, base)];
@@ -90,9 +90,10 @@ function calc(){
   // other items
   const H = state.housing.items, F = state.family.items;
   const hCash = sum(H.filter(i => i.source !== "CPF OA"), rem), hCPF = sum(H.filter(i => i.source === "CPF OA"), rem);
-  const RN = state.reno.items, rRem = sum(RN, rem);
+  const RN = activeReno(), remR = it => !it.include ? 0 : effCost(it) < 0 ? effCost(it) : Math.max(0, effCost(it) - it.paid);
+  const rRem = sum(RN, remR), rEst = Math.max(0, sum(RN.filter(it => !(+it.quote > 0)), remR));  // contingency only on items without a firm quote
   const fRem = sum(F, rem), ang = state.family.angbao || 0;
-  const cont = (hCash + rRem + fRem) * k;
+  const cont = (hCash + rEst + fRem) * k;
   const famNet = Math.max(0, fRem - ang);
   const P = state.people.map((p, i) => {
     const r = RATES[p.age] || RATES[AGES[0]], wage = Math.min(p.salary, S.ceiling);
@@ -132,7 +133,7 @@ function calc(){
   const msr = gross > 0 ? inst / gross : 0;
   const cashNeed = C.myNeed, cpfNeed = C.myCPF;
   const planned = sum(H.concat(F, RN), i => i.include ? i.cost : 0) + upfrontFull, paid = sum(H.concat(F, RN), i => i.include ? i.paid : 0) + upfrontPaid;
-  return {P, C, hCash, hCPF, rRem, fRem, famNet, ang, cont, cashNeed, cpfNeed, planned, paid, k,
+  return {P, C, hCash, hCPF, rRem, rEst, fRem, famNet, ang, cont, cashNeed, cpfNeed, planned, paid, k,
     loan: {price, ltvAmt, dp, dpNet, dpPaid, dpLeft, loanAmt, stamp, upfront, upfrontFull, upfrontPaid, minCash, inst, totalInterest, msr, gross, keyM}};
 }
 
@@ -151,11 +152,79 @@ function sel(id, path, val, options, label){
 function hasExamples(){
   return state.people.some(p => p.ex) || state.housing.items.some(i => i.ex) || state.family.items.some(i => i.ex) || state.reno.items.some(i => i.ex) || state.monthly.some(i => i.ex) || state.loan.ex;
 }
-const nm = (i) => (state.people[i].name || "").trim() || (i ? "Person B" : "Person A");
 const exBanner = () => hasExamples() ? `<div class="banner"><span>●</span><span><b>Example figures.</b> Rows tagged <span class="chip ex">Example</span> are placeholders, not your real numbers. Type over a value, or tap the tag to keep it as yours.</span></div>` : "";
 
+function moveInPlan(R){
+  const {C} = R, k = R.k, RS = state.reno, now = ymOf(new Date());
+  const keyYM = state.loan.keyDate ? state.loan.keyDate.slice(0, 7) : "", miYM = moveInYM();
+  if(!keyYM && !miYM) return {missing: true};
+  const keyAt = keyYM || miYM, mi = miYM || keyAt, signAt = RS.signYM || keyAt;
+  const ev = [], add = (ym, what, amt) => { if(amt > 0.5) ev.push({ym: ym < now ? now : ym, what, amt, late: ym < now}); };
+  add(keyAt, "HDB downpayment balance, stamp duty & legal fees (cash part)", C.upCash);
+  state.housing.items.filter(i => i.include && i.source !== "CPF OA").forEach(i => add(i.date ? i.date.slice(0, 7) : keyAt, i.name || "Housing cost", Math.max(0, i.cost - i.paid) * (1 + k)));
+  const renoDue = R.rRem + R.rEst * k, dep = Math.min(100, Math.max(0, +RS.depPct || 0)), st = Math.min(100 - dep, Math.max(0, +RS.startPct || 0)), rest = 100 - dep - st;
+  add(signAt, `Renovation deposit at signing (${dep}%)`, renoDue * dep / 100);
+  add(keyAt, `Renovation start of works (${st}%)`, renoDue * st / 100);
+  add(mi, `Renovation balance, furniture & appliances (${rest}%)`, renoDue * rest / 100);
+  state.family.items.filter(i => i.include && i.date && i.date.slice(0, 7) <= mi).forEach(i => add(i.date.slice(0, 7), i.name || "Family cost", Math.max(0, i.cost - i.paid) * (1 + k)));
+  ev.sort((a, b) => a.ym < b.ym ? -1 : a.ym > b.ym ? 1 : 0);
+  const at = ym => ym <= now ? C.proj[0] : (C.proj.find(p => p.ym === ym) || C.proj[C.proj.length - 1]);
+  const months = [...new Set(ev.map(e => e.ym))];
+  let out = 0, low = {bal: C.cash, ym: now, t: 0}, need = 0, needPay = 0;
+  const groups = months.map(ym => {
+    const items = ev.filter(e => e.ym === ym), amt = sum(items, e => e.amt), p = at(ym);
+    out += amt; const bal = p.cash - out;
+    if(bal < low.bal) low = {bal, ym, t: p.t};
+    if(bal < 0) needPay = Math.max(needPay, -bal / Math.max(1, p.t));
+    return {ym, items, amt, saved: p.cash - C.cash, bal, t: p.t};
+  });
+  const pm = at(mi), final = pm.cash - out, target = C.target;
+  need = needPay; if(final < target) need = Math.max(need, (target - final) / Math.max(1, pm.t));
+  const state_ = low.bal < -0.5 ? "bad" : final < target - 0.5 ? "warn" : "good";
+  return {keyYM, miYM: mi, signAt, now, groups, total: out, final, low, target, need, needPay, t: pm.t, state: state_, renoDue, past: mi < now, keyPast: keyYM && keyYM < now, nowMonth: pm.t === 0};
+}
+function moveInCard(R){
+  const {C} = R, M = moveInPlan(R), L = state.loan, RS = state.reno;
+  const keyLbl = M.keyYM ? fmtYM(M.keyYM) : "key collection";
+  const inputs = `<div class="settings">
+      <label for="o-key">Key collection date${fld("o-key", "loan.keyDate", L.keyDate, {type:"date", label:"Key collection date"})}</label>
+      <label for="o-mi">Move-in month <span class="hint">(blank = key month)</span>${fld("o-mi", "moveIn", state.moveIn, {type:"month", label:"Move-in month"})}</label>
+      <label for="o-sign">Sign with ID <span class="hint">(blank = key month)</span>${fld("o-sign", "reno.signYM", RS.signYM, {type:"month", label:"ID signing month"})}</label>
+      <label for="o-dep">Deposit at signing (%)${fld("o-dep", "reno.depPct", RS.depPct, {label:"Deposit %"})}</label>
+      <label for="o-st">At start of works (%)${fld("o-st", "reno.startPct", RS.startPct, {label:"Start of works %"})}</label>
+    </div>`;
+  if(M.missing) return `<div class="card"><header><h2>By move-in day</h2></header>${inputs}<p class="note">Enter your key collection date to see how much cash you'll have when each payment is due.</p></div>`;
+  const warn = M.past ? `<div class="banner" style="background:var(--warn-soft);color:var(--warn)"><span>●</span><span>The move-in month saved here (${fmtYM(M.miYM)}) has already passed, so this section is paused. Enter your expected key collection date and move-in month above to see the plan.</span></div>` : "";
+  if(M.past) return `<div class="card"><header><h2>By move-in day</h2><span class="hint">Change the dates and everything below recalculates</span></header>${inputs}${warn}</div>`;
+  const sav = M.t > 0 ? C.surplusBefore : 0;
+  let verdict;
+  if(M.state === "good") verdict = `On move-in day we'll have <b>${money(M.final)}</b> left after paying everything due, with the ${money(M.target)} emergency fund intact.`;
+  else if(M.state === "warn") verdict = `We can pay everything, but on move-in day only <b>${money(M.final)}</b> is left, ${money(M.target - M.final)} below our ${money(M.target)} emergency fund.`;
+  else verdict = `We're <b>short ${money(-M.low.bal)}</b> in ${fmtYM(M.low.ym)}, when the payments then are due.`;
+  if(M.state === "warn") verdict += M.t > 0 ? ` To keep the full emergency fund, save <b>${money(M.need)} more a month</b> until then.` : "";
+  else if(M.state === "bad") verdict += M.t > 0 && M.low.t > 0 ? ` To cover the payments, save <b>${money(M.needPay)} more a month</b> (${money(C.surplusBefore + M.needPay)} a month in total) from now; ${money(M.need)} more a month also keeps the ${money(M.target)} emergency fund intact.` : ` That money is needed this month, so it can't come from monthly saving; push the payment later or cut the plan.`;
+  const rows = M.groups.map(g => `<tr class="grp"><td><b>${fmtYM(g.ym)}</b>${g.saved > 0.5 ? ` <span class="hint">· saved ${money(g.saved, true)} by then</span>` : ""}</td><td class="r num">${money(-g.amt)}</td><td class="r num ${g.bal < 0 ? "neg" : ""}">${money(g.bal)}</td></tr>`
+    + g.items.map(e => `<tr class="sub"><td>&nbsp;&nbsp;${esc(e.what)}${e.late ? ' <span class="chip warn">date passed</span>' : ""}</td><td class="r num">${money(e.amt)}</td><td></td></tr>`).join("")).join("");
+  return `<div class="card">
+    <header><h2>By move-in day</h2><span class="hint">Change the dates and everything below recalculates</span></header>
+    ${inputs}
+    ${warn}
+    <div class="verdict ${M.state}" style="margin-top:14px">
+      <div class="q">Cash on move-in day, ${fmtYM(M.miYM)}</div>
+      <div class="a">${M.state === "bad" ? "Short before we move in" : money(M.final)}</div>
+      <p>${verdict}</p>
+      <p class="hint">${M.t} month${M.t === 1 ? "" : "s"} away. Starts from ${money(C.cash)} today, saving ${money(sav)} a month${M.t > 0 && C.surplusAfter !== C.surplusBefore ? ` (${money(C.surplusAfter)} after move-in)` : ""}. Renovation ${money(M.renoDue)} (incl. contingency) is paid ${RS.depPct || 0}% at signing, ${RS.startPct || 0}% at keys, the rest at move-in. Family costs dated before move-in are included.</p>
+    </div>
+    <div class="tablebox"><table><thead><tr><th>When</th><th class="r">Pay</th><th class="r">Cash left</th></tr></thead><tbody>
+      <tr><td><b>Today</b> <span class="hint">· ${fmtYM(M.now)}</span></td><td></td><td class="r num">${money(C.cash)}</td></tr>
+      ${rows}
+      <tr class="total"><td>On move-in day <span class="hint">· ${fmtYM(M.miYM)}</span></td><td class="r num">${money(-M.total)}</td><td class="r num ${M.final < 0 ? "neg" : ""}">${money(M.final)}</td></tr>
+    </tbody></table></div>
+  </div>`;
+}
+
 function renderOverview(R){
-  const {P, C} = R, A = nm(0), B = nm(1);
+  const {P, C} = R, A = P[0].p.name, B = P[1].p.name;
   const k = R.k, Q = R.loan;
   const stages = [
     {key:"housing", name:"Housing", due: (state.loan.keyDate && state.loan.keyDate.slice(0, 7) >= ymOf(new Date()) && Q.dpLeft) ? state.loan.keyDate.slice(0, 7) : "", cash: C.upCash + R.hCash * (1 + k), cpf: C.oaForUp + R.hCPF,
@@ -164,8 +233,8 @@ function renderOverview(R){
        (Q.upfront - Q.dpLeft) > 0 ? `Stamp duty & legal fees ${money(Q.upfront - Q.dpLeft)}` : "",
        R.hCash + R.hCPF ? `Other housing costs ${money(R.hCash + R.hCPF)}` : "",
        (C.oaForUp + R.hCPF) ? `CPF OA pays ${money(C.oaForUp + R.hCPF)}, cash pays the rest` : ""]},
-    {key:"reno", name:"Renovation", due: firstDue(state.reno.items), cash: R.rRem * (1 + k), cpf: 0,
-     lines: [R.rRem ? `Still to pay ${money(R.rRem)} + ${state.settings.contingencyPct}% contingency` : "No renovation costs entered yet", "Cash only"]},
+    {key:"reno", name:"Renovation", due: firstDue(activeReno()), cash: R.rRem + R.rEst * k, cpf: 0,
+     lines: [R.rRem ? `Still to pay ${money(R.rRem)} + ${state.settings.contingencyPct}% contingency on the ${money(R.rEst)} not yet quoted` : "No renovation costs entered yet", "Cash only"]},
     {key:"family", name:"Family Planning", due: firstDue(state.family.items), cash: R.famNet + R.fRem * k, cpf: 0,
      lines: [R.fRem ? `Still to pay ${money(R.fRem)}${R.ang ? `, less ${money(Math.min(R.ang, R.fRem))} ang bao` : ""} + ${state.settings.contingencyPct}% contingency` : "No family costs entered yet"]},
     {key:"emergency", name:"Emergency fund", due: "", cash: C.target, cpf: 0,
@@ -198,7 +267,7 @@ function renderOverview(R){
   const lateOther = stages.filter(st => st.late && st !== firstFail).map(st => st.name);
   if(lateOther.length) vText += ` ${listJoin(lateOther)} may not be ready in time either.`;
   if(state.monthly.length === 0) vText += ` <b>No monthly expenses entered yet</b>, so these dates are too optimistic. Add them on the Monthly tab.`;
-  const warnText = P.filter(x => x.oaDrain && x.instOA > 0).map(x => `${esc(nm(state.people.indexOf(x.p)))}'s HDB instalment from CPF OA (${money(x.instOA)}/mo) is more than their monthly OA contribution, so their OA will run down. `).join("")
+  const warnText = P.filter(x => x.oaDrain && x.instOA > 0).map(x => `${esc(x.p.name)}'s HDB instalment from CPF OA (${money(x.instOA)}/mo) is more than their monthly OA contribution, so their OA will run down. `).join("")
     + (R.loan.msr > 0.3 ? `The HDB instalment is ${Math.round(R.loan.msr * 100)}% of our gross income, above the 30% limit (MSR). ` : "")
     + (P.some(x => x.status === "bad") && P.some(x => x.status !== "bad") ? `One of us can't cover their own share; consider changing the split in Settings.` : "");
   const stLabel = st => st.state === "none" ? `<span class="chip">${st.key === "emergency" ? "No target set" : "Nothing planned"}</span>` : st.state === "good" ? '<span class="chip good">Enough</span>' : st.state === "warn" ? `<span class="chip warn">Short ${money(st.short)}</span>` : `<span class="chip bad">Short ${money(st.short)}</span>`;
@@ -236,7 +305,7 @@ function renderOverview(R){
   const exp = [
     ["HDB downpayment, stamp duty & legal fees", R.loan.upfrontFull, R.loan.upfrontPaid],
     ["Other housing costs", t(H, i => i.cost), t(H, i => i.paid)],
-    ["Renovation", t(state.reno.items, i => i.cost), t(state.reno.items, i => i.paid)],
+    ["Renovation (" + PLANS[activePlan()] + ")", t(activeReno(), effCost), t(activeReno(), i => i.paid)],
     ["Family planning", t(F, i => i.cost), t(F, i => i.paid)],
   ];
   const expRows = exp.map((e, n) => `<tr><td>${e[0]}</td><td class="r num">${money(e[1])}</td><td class="r num">${money(e[2])}</td><td class="r num">${money(Math.max(0, e[1] - e[2]))}</td></tr>`
@@ -247,17 +316,8 @@ function renderOverview(R){
 
 
 
-  if(!C.cash && !C.income && stages.every(st => st.state === "none")) return `<section class="panel">
-  <div class="verdict">
-    <div class="q">Can we afford it, step by step?</div>
-    <div class="a">Add your figures to see the answer</div>
-    <p>Start on <a href="housing.html">Housing</a> with your salaries, savings and CPF, then the HDB loan. Add your expenses on <a href="monthly.html">Monthly</a>, and your plans on <a href="renovation.html">Renovation</a> and <a href="family.html">Family Planning</a>. Already have an export file? Use <b>Import file</b> at the bottom of the page.</p>
-  </div>
-  ${namesCard("e")}
-</section>`;
   return `<section class="panel" role="tabpanel" aria-labelledby="tab-overview">
   ${exBanner()}
-  ${defaultNames() ? namesCard("t") : ""}
   <div class="verdict ${vClass}">
     <div class="q">Can we afford it, step by step?</div>
     <div class="a">${headline}</div>
@@ -265,6 +325,7 @@ function renderOverview(R){
     <p class="hint">Starts from our cash savings today (${money(C.cash)}) and pays for each step in order. CPF OA goes to housing first.</p>
   </div>
   <ol class="stages">${ladder}</ol>
+  ${moveInCard(R)}
   ${warnText ? `<div class="banner" style="background:var(--warn-soft);color:var(--warn)"><span>●</span><span>${warnText}</span></div>` : ""}
   <div class="kpis">
     <div class="kpi"><span class="l">Cash savings</span><span class="v">${money(C.cash)}</span><span class="s">${esc(A)} ${money(P[0].p.cash)} · ${esc(B)} ${money(P[1].p.cash)}</span></div>
@@ -284,7 +345,6 @@ function renderOverview(R){
   <div class="card">
     <header><h2>Settings</h2></header>
     <div class="settings">
-      ${defaultNames() ? "" : nameFields("s")}
       <label for="s-split">${esc(A)} pays this % of planned spending${fld("s-split", "settings.splitA", state.settings.splitA, {label:"Split"})}</label>
       <label for="s-ct">Contingency on cash spending (%)${fld("s-ct", "settings.contingencyPct", state.settings.contingencyPct, {label:"Contingency"})}</label>
       <label for="s-cl">CPF monthly wage ceiling (S$)${fld("s-cl", "settings.ceiling", state.settings.ceiling, {label:"Ceiling"})}</label>
@@ -340,7 +400,7 @@ function renderHousing(R){
         <label>MediSave <span class="hint">(+${money(x.maM)} /mo)</span></label><div class="out num">${money(x.estMA)}</div>
         <label><b>Total CPF</b></label><div class="out num"><b>${money(x.cpf)}</b></div>
       </div></div>`; }).join("");
-  const L = state.loan, Q = R.loan, A = nm(0), B = nm(1);
+  const L = state.loan, Q = R.loan, A = R.P[0].p.name, B = R.P[1].p.name;
   const out = (l, v, bold, cls) => `<label>${bold ? "<b>" + l + "</b>" : l}</label><div class="out num ${cls || ""}">${bold ? "<b>" + v + "</b>" : v}</div>`;
   const warns = [];
   if(L.type === "HDB loan" && L.ltv > 75) warns.push("HDB loans are capped at 75% LTV.");
@@ -415,13 +475,13 @@ function renderHousing(R){
 </section>`;
 }
 
-const defaultNames = () => state.people[0].name === "Person A" && state.people[1].name === "Person B";
-const nameFields = id => `<label for="${id}-n0">First person's name${fld(id + "-n0", "people.0.name", state.people[0].name, {type:"text", label:"First person's name"})}</label>
-      <label for="${id}-n1">Second person's name${fld(id + "-n1", "people.1.name", state.people[1].name, {type:"text", label:"Second person's name"})}</label>`;
-const namesCard = id => `<div class="card names">
-    <header><h2>Who's budgeting?</h2><span class="hint">Your names appear on every page instead of Person A and Person B</span></header>
-    <div class="settings">${nameFields(id)}</div>
-  </div>`;
+const RGROUPS = ["ACE: design & preparation","ACE: carpentry & tops","ACE: glass, doors & finishing","Not in ACE quote: works & fittings","Works & services","Kitchen & dining","Living & entrance","Bedrooms","Bathrooms & service yard","Aircon & appliances","Furniture & décor","Possible extras","Other"];
+const planOf = it => it.plan || "ours";
+const activePlan = () => state.reno.active || "ours";
+const activeReno = () => state.reno.items.filter(i => planOf(i) === activePlan());
+const PLANS = {ours: "Our list", ace: "ACE proposal"};
+let renoView = null;
+const effCost = it => (+it.quote > 0 ? +it.quote : +it.cost || 0);
 function firstDue(items){ const d = items.filter(i => i.include && i.date && i.cost > i.paid).map(i => i.date).sort()[0]; return d || ""; }
 function efDesc(C){
   const S = state.settings;
@@ -431,7 +491,7 @@ function efDesc(C){
 function renderMonthly(R){
   const {P, C} = R, mi = moveInYM(), now = C.nowAfter;
   const personCard = i => {
-    const x = P[i], name = nm(i), mine = state.monthly.filter(m => m.owner === i);
+    const x = P[i], name = x.p.name, mine = state.monthly.filter(m => m.owner === i);
     const row = m => `<tr>
       <td class="namecell c-name">${fld("m-" + m.id + "-name", "monthly.#" + m.id + ".name", m.name, {type:"text", label:"Expense"})}${m.ex ? ` <button class="chip ex" data-act="keep" data-list="monthly" data-id="${m.id}">Example · keep</button>` : ""}</td>
       <td class="c-amt" data-label="Amount (S$)" style="min-width:100px">${fld("m-" + m.id + "-amt", "monthly.#" + m.id + ".amt", m.amt, {label:"Amount"})}</td>
@@ -459,7 +519,7 @@ function renderMonthly(R){
   // combined summary by category
   const catRow = (cat, after) => { const f = i => sum(state.monthly.filter(m => m.owner === i && (CATS.includes(m.cat) ? m.cat : "Other") === cat && applies(m, after)), perMonth) + (cat === "Home" && after ? P[i].hdbCash : 0); return [f(0), f(1)]; };
   const sumRows = CATS.map(cat => { const [a, b] = catRow(cat, now); const [a2, b2] = catRow(cat, true); return (a + b + a2 + b2) ? `<tr><td>${cat}</td><td class="r num">${money(a)}</td><td class="r num">${money(b)}</td><td class="r num">${money(a + b)}</td></tr>` : ""; }).join("");
-  const A = nm(0), B = nm(1);
+  const A = P[0].p.name, B = P[1].p.name;
   const line = (l, a, b, cls) => `<tr class="${cls || ""}"><td>${l}</td><td class="r num">${money(a)}</td><td class="r num">${money(b)}</td><td class="r num">${money(a + b)}</td></tr>`;
   const phaseNote = !mi ? `Set a move-in month so costs that start or stop when you move in are timed correctly. Until then, we assume you've already moved in.`
     : now ? `From ${fmtYM(mi)} you're living in the new flat, so "After we move in" costs apply now.` : `Until ${fmtYM(mi)}: "Always" + "Until we move in" costs. From then on: "Always" + "After we move in" costs.`;
@@ -530,7 +590,7 @@ function timelineCard(stages, C){
 }
 
 function renderEmergency(R){
-  const {P, C} = R, S = state.settings, A = nm(0), B = nm(1);
+  const {P, C} = R, S = state.settings, A = P[0].p.name, B = P[1].p.name;
   const months = C.expAfter > 0 ? C.efGross / C.expAfter : 0;
   const mRows = state.monthly.map(m => `<tr><td class="namecell c-name">${fld("m-" + m.id + "-name", "monthly.#" + m.id + ".name", m.name, {type:"text", label:"Expense"})}${m.ex ? ` <button class="chip ex" data-act="keep" data-list="monthly" data-id="${m.id}">Example · keep</button>` : ""}</td>
     <td class="c-a" data-label="${esc(A)}">${fld("m-" + m.id + "-a", "monthly.#" + m.id + ".a", m.a, {label:A})}</td><td class="c-b" data-label="${esc(B)}">${fld("m-" + m.id + "-b", "monthly.#" + m.id + ".b", m.b, {label:B})}</td>
@@ -560,18 +620,57 @@ function renderEmergency(R){
 }
 
 function renderReno(R){
-  const RN = state.reno.items, inc = RN.filter(i => i.include);
-  const planned = sum(inc, i => i.cost), paid = sum(inc, i => i.paid), cap = state.reno.cap;
-  const withCont = R.rRem * (1 + R.k);
-  const head = cap ? planned * (1 + R.k) - cap : 0;
+  const view = renoView || activePlan(), cap = state.reno.cap;
+  const RN = state.reno.items.filter(i => planOf(i) === view), inc = RN.filter(i => i.include);
+  const planTot = pl => sum(state.reno.items.filter(i => planOf(i) === pl && i.include), effCost);
+  const planEst = pl => Math.max(0, sum(state.reno.items.filter(i => planOf(i) === pl && i.include && !(+i.quote > 0)), effCost));
+  const planAll = pl => planTot(pl) + planEst(pl) * R.k;
+  const hasAce = state.reno.items.some(i => planOf(i) === "ace");
+  const tile = pl => { const t = planTot(pl), on = activePlan() === pl, n = state.reno.items.filter(i => planOf(i) === pl && i.include).length;
+    return `<div class="plan ${on ? "on" : ""} ${view === pl ? "viewing" : ""}">
+      <div class="pt"><b>${PLANS[pl]}</b>${on ? '<span class="chip good">Used in budget</span>' : ""}</div>
+      <div class="v num">${money(planAll(pl))}</div>
+      <div class="hint">${n} items · ${money(t)} + ${state.settings.contingencyPct}% on unquoted items</div>
+      <div class="pacts">${view === pl ? '<span class="hint">Showing below</span>' : `<button class="linkbtn" data-act="rview" data-plan="${pl}">Show items</button>`}${on ? "" : `<button class="linkbtn" data-act="ruse" data-plan="${pl}">Use this plan</button>`}</div>
+    </div>`; };
+  const diff = planAll("ace") - planAll("ours");
+  const compare = hasAce ? `<div class="card">
+    <header><h2>Compare plans</h2><span class="hint">ACE plan is ${money(Math.abs(diff))} ${diff >= 0 ? "more" : "less"} than our list, incl. contingency</span></header>
+    <div class="plans">${tile("ours")}${tile("ace")}</div>
+    <p class="note">Only the plan marked "Used in budget" counts on the Overview. The lists don't cover exactly the same things: check what's missing from each before comparing totals.</p>
+  </div>` : "";
+  const est = sum(inc, i => +i.cost || 0), planned = sum(inc, effCost), paid = sum(inc, i => i.paid);
+  const quoted = inc.filter(i => +i.quote > 0 && +i.cost > 0), qSum = sum(quoted, i => +i.quote), qEst = sum(quoted, i => +i.cost || 0);
+  const nQuoted = inc.filter(i => +i.quote > 0).length, firm = sum(inc.filter(i => +i.quote > 0), i => +i.quote);
+  const withCont = R.rRem + R.rEst * R.k;
+  const head = cap ? planned + planEst(view) * R.k - cap : 0;
+  const row = it => {
+    const p = "r-" + it.id, q = +it.quote || 0, d = q - (+it.cost || 0);
+    const pos = q ? (it.lo && q < it.lo ? "below" : it.hi && q > it.hi ? "above" : "within") : "";
+    return `<tr>
+      <td class="c-inc"><input type="checkbox" id="${p}-inc" data-b="reno.items.#${it.id}.include" data-t="b" ${it.include ? "checked" : ""} aria-label="Include ${esc(it.name)}"></td>
+      <td class="namecell c-name">${fld(p + "-name", "reno.items.#" + it.id + ".name", it.name, {type:"text", label:"Item"})}${it.ex ? ` <button class="chip ex" data-act="keep" data-list="reno.items" data-id="${it.id}">Example · keep</button>` : ""}</td>
+      <td class="c-cost" data-label="Estimate (S$)" style="min-width:110px">${fld(p + "-cost", "reno.items.#" + it.id + ".cost", it.cost, {label:"Estimate"})}${it.lo || it.hi ? `<div class="hint num rng">${money(it.lo)}–${money(it.hi)}</div>` : ""}</td>
+      <td class="c-when" data-label="Quote (S$)" style="min-width:110px">${fld(p + "-quote", "reno.items.#" + it.id + ".quote", it.quote, {label:"Quote"})}${q && +it.cost ? `<div class="hint num rng ${pos === "above" ? "neg" : ""}">${money(d, true)} vs est.${pos ? " · " + pos + " range" : ""}</div>` : q ? `<div class="hint rng">Quoted</div>` : ""}</td>
+      <td class="c-paid" data-label="Paid (S$)" style="min-width:100px">${fld(p + "-paid", "reno.items.#" + it.id + ".paid", it.paid, {label:"Paid"})}</td>
+      <td class="c-note" data-label="Note" style="min-width:140px">${fld(p + "-note", "reno.items.#" + it.id + ".note", it.note, {type:"text", label:"Note"})}</td>
+      <td class="c-del"><button class="x" data-act="del" data-list="reno.items" data-id="${it.id}" aria-label="Remove ${esc(it.name)}">×</button></td></tr>`;
+  };
+  const groups = RGROUPS.map(g => {
+    const items = RN.filter(i => (RGROUPS.includes(i.group) ? i.group : "Other") === g);
+    if(!items.length && g !== "Other") return "";
+    const gi = items.filter(i => i.include);
+    return `<tr class="cat"><td colspan="7"><span class="catname">${g === "Other" && view === "ours" ? "Our items" : g}</span> <span class="hint num">${money(sum(gi, effCost))}</span></td></tr>${items.map(row).join("")}<tr class="addrow"><td colspan="7"><button class="linkbtn" data-act="add" data-list="reno.items" data-cat="${g}">+ Add to ${g}</button></td></tr>`;
+  }).join("");
   return `<section class="panel" role="tabpanel" aria-labelledby="tab-reno">
   ${exBanner()}
   <div class="kpis">
-    <div class="kpi"><span class="l">Renovation planned</span><span class="v">${money(planned)}</span><span class="s">Included items</span></div>
-    <div class="kpi"><span class="l">Paid so far</span><span class="v">${money(paid)}</span><span class="s">${planned ? Math.round(paid / planned * 100) : 0}% of plan</span></div>
-    <div class="kpi"><span class="l">Still to pay</span><span class="v">${money(withCont)}</span><span class="s">Incl. ${state.settings.contingencyPct}% contingency</span></div>
+    <div class="kpi"><span class="l">Renovation planned</span><span class="v">${money(planned)}</span><span class="s">Quotes where entered, estimates elsewhere</span></div>
+    <div class="kpi"><span class="l">${quoted.length ? "Quotes vs estimate" : "Firmly quoted"}</span><span class="v ${quoted.length && qSum > qEst ? "neg" : ""}">${quoted.length ? money(qSum - qEst, true) : money(firm)}</span><span class="s">${quoted.length ? `${quoted.length} items quoted (${money(qSum)} vs ${money(qEst)})` : nQuoted ? `${nQuoted} of ${inc.length} items have a quote; the rest are estimates` : "Enter quoted prices in the Quote column"}</span></div>
+    <div class="kpi"><span class="l">Still to pay</span><span class="v">${money(withCont)}</span><span class="s">Incl. ${state.settings.contingencyPct}% contingency · paid ${money(paid)}</span></div>
     <div class="kpi"><span class="l">Against our budget</span><span class="v ${head > 0 ? "neg" : ""}">${cap ? (head > 0 ? money(head) + " over" : money(-head) + " under") : "No budget set"}</span><span class="s">${cap ? "Budget " + money(cap) + ", incl. contingency" : "Set one below"}</span></div>
   </div>
+  ${compare}
   <div class="card">
     <header><h2>Renovation budget</h2></header>
     <div class="form" style="max-width:520px">
@@ -579,9 +678,12 @@ function renderReno(R){
     </div>
   </div>
   <div class="card">
-    <header><h2>Renovation items</h2><span class="hint">Enter quotes as you get them. Items at S$0 don't affect the totals</span></header>
-    ${itemTable(RN, "reno")}
-    <p class="note">Renovation is paid in cash, as CPF can't be used for it. Use "Paid" for deposits and progress payments to your contractor or ID. Appliances are left out for now.</p>
+    <header><h2>${hasAce ? PLANS[view] + " items" : "Renovation items"}</h2><span class="hint">Estimate = typical market price (range below it). Type the quoted price to compare; the quote is used in all totals</span></header>
+    <div class="tablebox"><table class="items reno2"><thead><tr><th title="Include in totals">Incl.</th><th>Item</th><th class="r">Estimate (S$)</th><th class="r">Quote (S$)</th><th class="r">Paid (S$)</th><th>Note</th><th></th></tr></thead>
+    <tbody>${groups}
+    <tr class="total"><td class="c-inc"></td><td class="c-name">Included items</td><td class="r num c-cost" data-label="Estimate">${money(est)}</td><td class="r num c-when" data-label="Planned (quotes used)">${money(planned)}</td><td class="r num c-paid" data-label="Paid">${money(paid)}</td><td class="hint c-note">+ ${state.settings.contingencyPct}% on unquoted = ${money(planAll(view))}</td><td class="c-del"></td></tr>
+    </tbody></table></div>
+    <p class="note">The ${state.settings.contingencyPct}% contingency is added only to items without a firm quote. Renovation, appliances and furniture are paid in cash; CPF can't be used. Estimates assume laminate carpentry (veneer ≈ +30%, spray paint ≈ +45%); interior-designer quotes usually run 20–40% above direct contractors. Untick "Incl." to leave an item out.</p>
   </div>
 </section>`;
 }
@@ -685,6 +787,8 @@ app.addEventListener("focusout", e => { if(raw && e.target.id === raw.id){ raw =
 app.addEventListener("click", e => {
   const g = e.target.closest("a[data-go]"); if(g){ e.preventDefault(); setTab(g.dataset.go); window.scrollTo(0, 0); return; }
   const b = e.target.closest("button[data-act]"); if(!b) return;
+  if(b.dataset.act === "rview"){ renoView = b.dataset.plan; render(); return; }
+  if(b.dataset.act === "ruse"){ state.reno.active = b.dataset.plan; renoView = b.dataset.plan; render(); queueSave(); return; }
   if(b.dataset.act === "cat"){ const c = b.dataset.owner + ":" + b.dataset.cat; openCats.has(c) ? openCats.delete(c) : openCats.add(c); render(); return; }
   if(b.dataset.act === "keep"){
     const own = b.dataset.list ? b.dataset.list.split(".").reduce((o, k) => o[k], state).find(x => x.id === b.dataset.id) : b.dataset.owner.split(".").reduce((o, k) => o[k], state);
@@ -696,7 +800,7 @@ app.addEventListener("click", e => {
     const id = uid();
     if(b.dataset.list === "monthly"){ const ow = +b.dataset.owner || 0, ct = b.dataset.cat || "Other"; list.push({id, owner: ow, name:"", cat: ct, amt:0, freq:"month", when:"always"}); openCats.add(ow + ":" + ct); }
     else if(b.dataset.list === "housing.items") list.push({id, name:"", cost:0, paid:0, source:"Cash", include:true, note:""});
-    else list.push({id, name:"", cost:0, paid:0, date:"", include:true, note:""});
+    else list.push(Object.assign({id, name:"", cost:0, paid:0, date:"", include:true, note:""}, b.dataset.list === "reno.items" ? {group: b.dataset.cat || "Other", quote:0, plan: renoView || activePlan()} : {}));
     render(); const el = document.getElementById((b.dataset.list === "monthly" ? "m-" : b.dataset.list[0] + "-") + id + "-name"); if(el) el.focus();
     queueSave(); return;
   }

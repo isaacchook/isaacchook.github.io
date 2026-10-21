@@ -127,6 +127,16 @@ tr.cat .catname{font:700 15px var(--f-display);color:var(--ink)}
 .cattog:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 a[data-go]{color:var(--accent)}
 tr.addrow td{border-bottom:0;padding:2px 6px 8px}
+.rng{font-size:11px;margin-top:3px;text-align:right}
+table.items.reno2 .namecell{min-width:250px}
+.plans{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+@media (max-width:560px){.plans{grid-template-columns:1fr}}
+.plan{border:1px solid var(--line);border-radius:10px;padding:14px 16px;display:grid;gap:4px}
+.plan.on{border-color:var(--good);box-shadow:inset 0 0 0 1px var(--good)}
+.plan.viewing{background:var(--sunk)}
+.plan .pt{display:flex;gap:8px;align-items:center;justify-content:space-between}
+.plan .v{font-size:22px;font-weight:500}
+.plan .pacts{display:flex;gap:16px;align-items:center;margin-top:4px}
 tr.empty-cat td{padding-top:8px}
 tr.empty-cat .catname{font-weight:500;color:var(--muted);font-size:14px}
 .linkbtn{background:none;border:0;color:var(--accent);font:600 13px var(--f-body);cursor:pointer;padding:4px 0}
@@ -152,6 +162,10 @@ tr.empty-cat .catname{font-weight:500;color:var(--muted);font-size:14px}
   table.items td[data-label]::before{content:attr(data-label);display:block;font-size:11.5px;color:var(--muted);margin-bottom:3px;text-align:left;font-family:var(--f-body);font-weight:500}
   .c-inc{grid-area:inc;align-self:center} .c-name{grid-area:name} .c-del{grid-area:del;align-self:center} .c-when{grid-area:when} .c-cost{grid-area:cost} .c-paid{grid-area:paid} .c-note{grid-area:note} .c-ex{grid-area:ex}
   table.items tr.total td,table.items tr.sub td{text-align:left}
+  table.items.reno2 tr{grid-template-areas:"inc name name del" ". cost when ." ". paid paid ." ". note note ."}
+  table.items.reno2 tr.total{grid-template-areas:". name name ." ". cost when ." ". paid paid ." ". note note ."}
+  table.items.reno2 tr.cat,table.items.reno2 tr.addrow,table.items.reno2 tr.cat td,table.items.reno2 tr.addrow td{display:block}
+  .rng{text-align:left}
   table.items tr.total{grid-template-areas:". name name ." ". cost paid ." ". note note .";border-top:2px solid var(--line)}
   table.items.monthly tr{grid-template-columns:repeat(3,minmax(0,1fr)) 30px;grid-template-areas:"name name name del" "a b sum .";align-items:end}
   table.items.monthly tr.sub,table.items.monthly tr.total{grid-template-areas:"name name name ." "a b sum ."}
@@ -195,4 +209,3 @@ nav.tabs a:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .databar button:hover{border-color:var(--accent)}
 .databar button.danger{color:var(--bad)}
 .databar button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.verdict a,.note a{color:var(--accent)}
