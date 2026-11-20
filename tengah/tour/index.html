@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font-size:14px}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Tengah Home Tour</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="robots" content="noindex, nofollow">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;700&family=Manrope:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: full-bleed 360° panorama; glass chrome floats on top — title card (top-left), controls + floor plan (top-right), room strip (bottom). Single dark-glass look by choice, since it always sits on photography. */
+:root {
+  --glass: rgba(28, 25, 21, 0.62);
+  --glass-hi: rgba(28, 25, 21, 0.8);
+  --line: rgba(255, 248, 236, 0.16);
+  --ink: #fbf6ee;
+  --ink-2: rgba(251, 246, 238, 0.68);
+  --oak: #d6b48a;
+  --sage: #a9bf9c;
+  --bg: #1c1915;
+  --f-display: "Shippori Mincho", "Hiragino Mincho ProN", "Yu Mincho", Georgia, serif;
+  --f-ui: "Manrope", "Helvetica Neue", Arial, sans-serif;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-ui); overflow: hidden; -webkit-font-smoothing: antialiased; }
+#stage { position: fixed; inset: 0; touch-action: none; cursor: grab; }
+#stage.drag { cursor: grabbing; }
+#stage canvas { display: block; width: 100%; height: 100%; }
+.glass { background: var(--glass); backdrop-filter: blur(14px) saturate(1.1); -webkit-backdrop-filter: blur(14px) saturate(1.1); border: 1px solid var(--line); }
+
+/* title card */
+#card { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 16px); left: max(16px, env(safe-area-inset-left, 0px)); max-width: min(360px, calc(100vw - 32px - 152px)); border-radius: 14px; padding: 14px 16px 15px; display: grid; gap: 6px; z-index: 5; }
+.eyebrow { font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--oak); font-weight: 600; }
+#room { font-family: var(--f-display); font-weight: 700; font-size: 26px; line-height: 1.15; text-wrap: balance; margin: 0; }
+#note { font-size: 13px; line-height: 1.45; color: var(--ink-2); margin: 0; }
+#note[hidden] { display: none; }
+.cardfoot { display: flex; gap: 10px; align-items: center; font-size: 11.5px; color: var(--ink-2); padding-top: 4px; border-top: 1px solid var(--line); margin-top: 4px; font-variant-numeric: tabular-nums; }
+.cardfoot b { color: var(--ink); font-weight: 600; }
+
+/* controls */
+#ctrl { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 16px); right: max(16px, env(safe-area-inset-right, 0px)); display: flex; gap: 6px; z-index: 6; }
+.btn { appearance: none; border: 1px solid var(--line); background: var(--glass); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); color: var(--ink); width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; cursor: pointer; transition: background .2s, border-color .2s; }
+.btn:hover { background: var(--glass-hi); }
+.btn[aria-pressed="true"] { border-color: var(--oak); color: var(--oak); }
+.btn:focus-visible, .thumb:focus-visible, .hs:focus-visible, .pin:focus-visible { outline: 2px solid var(--oak); outline-offset: 2px; }
+.btn svg { width: 18px; height: 18px; }
+
+/* floor plan */
+#plan { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 64px); right: max(16px, env(safe-area-inset-right, 0px)); width: min(330px, calc(100vw - 32px)); border-radius: 14px; padding: 10px; z-index: 5; }
+#plan .head { display: flex; justify-content: space-between; align-items: baseline; padding: 2px 4px 8px; }
+#plan .head span:first-child { font-family: var(--f-display); font-weight: 700; font-size: 14px; }
+#plan .head span:last-child { font-size: 10.5px; color: var(--ink-2); letter-spacing: .06em; }
+.mapbox { position: relative; width: 100%; aspect-ratio: 3 / 2; max-width: 100%; border-radius: 8px; overflow: hidden; background: #e8ecef; }
+.mapbox img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.mapbox svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.pin { position: absolute; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%; border: 0; padding: 0; background: transparent; cursor: pointer; display: grid; place-items: center; }
+.pin i { width: 10px; height: 10px; border-radius: 50%; background: #2b2620; border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,.35); transition: transform .2s, background .2s; }
+.pin:hover i { transform: scale(1.25); }
+.pin.on i { background: var(--oak); transform: scale(1.35); }
+.pin .tip { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: 11px; font-weight: 600; background: var(--glass-hi); color: var(--ink); padding: 3px 7px; border-radius: 6px; opacity: 0; pointer-events: none; transition: opacity .15s; }
+.pin:hover .tip, .pin:focus-visible .tip { opacity: 1; }
+
+/* room strip */
+#strip { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; padding: 0 max(16px, env(safe-area-inset-right, 0px)) calc(env(safe-area-inset-bottom, 0px) + 14px) max(16px, env(safe-area-inset-left, 0px)); pointer-events: none; }
+#strip .rail { display: flex; gap: 8px; overflow-x: auto; padding: 8px; border-radius: 16px; pointer-events: auto; scrollbar-width: thin; max-width: max-content; margin: 0 auto; }
+.thumb { flex: 0 0 auto; width: 116px; border: 1px solid transparent; border-radius: 10px; padding: 0; background: none; color: var(--ink); cursor: pointer; text-align: left; overflow: hidden; position: relative; }
+.thumb img { display: block; width: 100%; aspect-ratio: 5 / 3; object-fit: cover; opacity: .78; transition: opacity .2s; }
+.thumb span { position: absolute; left: 0; right: 0; bottom: 0; padding: 14px 7px 5px; font-size: 11px; font-weight: 600; line-height: 1.2; background: linear-gradient(transparent, rgba(0,0,0,.72)); }
+.thumb:hover img { opacity: 1; }
+.thumb.on { border-color: var(--oak); }
+.thumb.on img { opacity: 1; }
+
+/* hotspots */
+#hs { position: fixed; inset: 0; pointer-events: none; z-index: 3; }
+.hs { position: absolute; left: 0; top: 0; pointer-events: auto; display: flex; flex-direction: column; align-items: center; gap: 6px; border: 0; background: none; padding: 0; cursor: pointer; color: var(--ink); will-change: transform; }
+.hs .ring { width: 46px; height: 46px; border-radius: 50%; background: rgba(28,25,21,.45); border: 2px solid rgba(255,255,255,.9); display: grid; place-items: center; box-shadow: 0 2px 10px rgba(0,0,0,.3); transition: transform .2s, background .2s; }
+.hs .ring svg { width: 20px; height: 20px; }
+.hs:hover .ring { transform: scale(1.12); background: rgba(214,180,138,.85); }
+.hs .lbl { font-size: 12px; font-weight: 600; background: var(--glass-hi); padding: 4px 9px; border-radius: 999px; white-space: nowrap; border: 1px solid var(--line); }
+
+#hint { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 4; pointer-events: none; padding: 10px 16px; border-radius: 999px; font-size: 13px; display: flex; gap: 8px; align-items: center; transition: opacity .6s; }
+#hint.gone { opacity: 0; }
+#load { position: fixed; inset: 0; display: grid; place-items: center; z-index: 9; background: var(--bg); transition: opacity .5s; font-family: var(--f-display); font-size: 18px; color: var(--ink-2); }
+#load.gone { opacity: 0; pointer-events: none; }
+#fade { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; z-index: 2; transition: opacity .28s ease; }
+
+@media (max-width: 640px) {
+  #card { padding: 11px 13px 12px; }
+  #room { font-size: 20px; }
+  #note { font-size: 12px; }
+  .cardfoot { display: none; }
+  .wide { display: none; }
+  .thumb { width: 92px; }
+  .hs .ring { width: 40px; height: 40px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #fade, #hint, #load { transition: none; }
+}
+</style>
+
+</head>
+<body>
+<div id="load">Opening the flat…</div>
+<div id="stage" aria-label="360 degree view. Drag to look around."></div>
+<div id="fade"></div>
+<div id="hs"></div>
+
+<section id="card" class="glass" aria-live="polite">
+  <div class="eyebrow">Parc Meadow @ Tengah<span class="wide"> · 5-room Type 1</span></div>
+  <h1 id="room">Entrance foyer</h1>
+  <p id="note"></p>
+  <div class="cardfoot"><span>Design <b>Isaac v8</b> · Japandi</span><span id="pos">1 / 11</span></div>
+</section>
+
+<div id="ctrl">
+  <button class="btn" id="bPlan" aria-pressed="true" title="Floor plan" aria-label="Show floor plan">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 4h18v16H3z"/><path d="M11 4v7H3M11 15v5M15 11h6M15 11v3"/></svg>
+  </button>
+  <button class="btn" id="bSpin" aria-pressed="false" title="Auto-rotate" aria-label="Auto-rotate">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v4h-4"/></svg>
+  </button>
+  <button class="btn" id="bFull" title="Full screen" aria-label="Full screen">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+  </button>
+</div>
+
+<section id="plan" class="glass" aria-label="Floor plan">
+  <div class="head"><span>Floor plan</span><span>TAP A DOT TO JUMP</span></div>
+  <div class="mapbox" id="mapbox">
+    <img src="map.jpg" alt="Top-down plan of the furnished flat">
+    <svg viewBox="0 0 1500 1000" preserveAspectRatio="none" aria-hidden="true"><path id="cone" fill="rgba(214,180,138,0.45)" stroke="#b98a55" stroke-width="3"/></svg>
+  </div>
+</section>
+
+<nav id="strip" aria-label="Rooms"><div class="rail glass" id="rail"></div></nav>
+
+<div id="hint" class="glass"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 12h8M5 9l-3 3 3 3M19 9l3 3-3 3"/></svg>Drag to look around · tap arrows to walk</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(() => {
+const SCENES = [
+ {id:"entrance",name:"Entrance foyer",x:11050,z:7900,lon:-110.3,lat:-3,links:["living","dining","kitchen"],note:"Shoe cabinet and key ledge by the door, opening straight onto the dining and living axis."},
+ {id:"living",name:"Living room",x:13400,z:3000,lon:137.5,lat:-8,links:["dining","entrance"],note:"L-shaped sofa facing the TV wall. The 2.56 m × 65 cm raised platform now sits beside the household shelter, so the window side stays clear."},
+ {id:"dining",name:"Dining",x:10000,z:4700,lon:-23.2,lat:-5,links:["living","entrance","kitchen","corridor"],note:"Round oak dining table between the living room and the black-frame glass door to the kitchen."},
+ {id:"kitchen",name:"Kitchen",x:8200,z:8300,lon:169.4,lat:-12,links:["dining","yard"],note:"Sink moved back beside the hob on a single run, with the bump-out removed. Glass door and fixed panel to the dining area are kept."},
+ {id:"yard",name:"Service yard",x:5300,z:8300,lon:52.4,lat:-12,links:["kitchen"],note:"Laundry area off the kitchen."},
+ {id:"corridor",name:"Bedroom corridor",x:5300,z:4500,lon:2.4,lat:-5,links:["dining","bed1","bed2","master","bath2"],note:"Links the three bedrooms and the common bath, looking back towards the dining area."},
+ {id:"bed1",name:"Bedroom 1",x:4600,z:2100,lon:-127.9,lat:-5,links:["corridor"],note:"Left unfurnished for now. Its bed and wardrobe are outside the current budget."},
+ {id:"bed2",name:"Bedroom 2 · study",x:7700,z:2700,lon:-42.7,lat:-8,links:["corridor"],note:"Study desk, with an open walnut bookshelf in place of the wardrobe."},
+ {id:"master",name:"Master bedroom",x:2700,z:4100,lon:-135,lat:-10,links:["corridor","bath1"],note:"King bed with a walnut headboard. The wardrobe run is split with the larger share for your partner."},
+ {id:"bath1",name:"Master bath",x:3000,z:6100,lon:16.7,lat:-22,links:["master"],note:"En-suite off the master bedroom."},
+ {id:"bath2",name:"Common bath",x:4800,z:6000,lon:-163.3,lat:-25,links:["corridor"],note:"Shared bath off the bedroom corridor."}
+];
+const BY = Object.fromEntries(SCENES.map(s => [s.id, s]));
+const EYE = 1500;                      // camera height in mm
+const MAP = {x0:-400, z0:-300, w:15600, h:10400};   // floor-plan image extent (mm)
+
+const stage = document.getElementById('stage');
+const renderer = new THREE.WebGLRenderer({antialias: true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+stage.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(75, 1, 1, 1100);
+const geo = new THREE.SphereGeometry(500, 72, 36); geo.scale(-1, 1, 1);
+const loader = new THREE.TextureLoader();
+const texCache = {};
+function tex(id) {
+  if (!texCache[id]) texCache[id] = new Promise((res, rej) => loader.load('pano/' + id + '.jpg', t => {
+    t.anisotropy = renderer.capabilities.getMaxAnisotropy(); t.minFilter = THREE.LinearFilter; t.generateMipmaps = false; res(t);
+  }, undefined, rej));
+  return texCache[id];
+}
+const sphere = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({color: 0xffffff}));
+scene.add(sphere);
+
+let lon = 0, lat = 0, fov = 75, cur = null, busy = false;
+let spin = false, lastInput = performance.now();
+const R = Math.PI / 180;
+
+function resize() {
+  const w = stage.clientWidth, h = stage.clientHeight;
+  renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize); resize();
+
+/* ---------- hotspots ---------- */
+const hsLayer = document.getElementById('hs');
+let hsEls = [];
+const ARROW = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 14l6-6 6 6"/></svg>';
+function buildHotspots(s) {
+  hsLayer.innerHTML = ''; hsEls = [];
+  s.links.forEach(id => {
+    const t = BY[id];
+    const v = new THREE.Vector3(t.x - s.x, -EYE * 0.9, t.z - s.z).normalize().multiplyScalar(300);
+    const b = document.createElement('button');
+    b.className = 'hs'; b.type = 'button'; b.setAttribute('aria-label', 'Go to ' + t.name);
+    b.innerHTML = '<span class="ring">' + ARROW + '</span><span class="lbl">' + t.name + '</span>';
+    b.addEventListener('click', e => { e.stopPropagation(); go(id, true); });
+    b.addEventListener('pointerdown', e => e.stopPropagation());
+    hsLayer.appendChild(b); hsEls.push({el: b, v});
+  });
+}
+const tmp = new THREE.Vector3();
+function placeHotspots() {
+  const w = stage.clientWidth, h = stage.clientHeight;
+  hsEls.forEach(o => {
+    tmp.copy(o.v).project(camera);
+    const behind = tmp.z > 1 || tmp.z < -1;
+    const x = (tmp.x + 1) / 2 * w, y = (1 - tmp.y) / 2 * h;
+    if (behind || x < -80 || x > w + 80 || y < -80 || y > h + 80) { o.el.hidden = true; return; }
+    o.el.hidden = false;
+    o.el.style.transform = 'translate(' + (x - o.el.offsetWidth / 2) + 'px,' + (y - 23) + 'px)';
+  });
+}
+
+/* ---------- floor plan ---------- */
+const mapbox = document.getElementById('mapbox');
+const cone = document.getElementById('cone');
+SCENES.forEach(s => {
+  const p = document.createElement('button');
+  p.className = 'pin'; p.type = 'button'; p.dataset.id = s.id; p.setAttribute('aria-label', s.name);
+  p.style.left = ((s.x - MAP.x0) / MAP.w * 100) + '%';
+  p.style.top = ((s.z - MAP.z0) / MAP.h * 100) + '%';
+  p.innerHTML = '<i></i><span class="tip">' + s.name + '</span>';
+  p.addEventListener('click', () => go(s.id));
+  mapbox.appendChild(p);
+});
+function drawCone() {
+  if (!cur) return;
+  const cx = (cur.x - MAP.x0) / MAP.w * 1500, cy = (cur.z - MAP.z0) / MAP.h * 1000;
+  const hf = Math.atan(Math.tan(fov * R / 2) * camera.aspect);   // horizontal half-FOV
+  const r = 150, a0 = lon * R - hf, a1 = lon * R + hf;
+  cone.setAttribute('d', 'M' + cx + ' ' + cy + ' L' + (cx + r * Math.cos(a0)) + ' ' + (cy + r * Math.sin(a0)) +
+    ' A' + r + ' ' + r + ' 0 ' + (hf * 2 > Math.PI ? 1 : 0) + ' 1 ' + (cx + r * Math.cos(a1)) + ' ' + (cy + r * Math.sin(a1)) + ' Z');
+}
+
+/* ---------- room strip ---------- */
+const rail = document.getElementById('rail');
+SCENES.forEach(s => {
+  const b = document.createElement('button');
+  b.className = 'thumb'; b.type = 'button'; b.dataset.id = s.id;
+  b.innerHTML = '<img src="pano/' + s.id + '_t.jpg" alt="" loading="lazy"><span>' + s.name + '</span>';
+  b.addEventListener('click', () => go(s.id));
+  rail.appendChild(b);
+});
+
+/* ---------- scene switching ---------- */
+const fade = document.getElementById('fade');
+const wait = ms => new Promise(r => setTimeout(r, ms));
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+async function go(id, walk) {
+  const s = BY[id]; if (!s || busy || (cur && cur.id === id)) return;
+  busy = true; lastInput = performance.now();
+  const tp = tex(id);
+  if (cur && !reduce) {
+    if (walk) { // turn towards the doorway, then step through
+      const target = Math.atan2(s.z - cur.z, s.x - cur.x) / R;
+      let d = ((target - lon + 540) % 360) - 180;
+      const l0 = lon, la0 = lat, f0 = fov, t0 = performance.now();
+      await new Promise(res => { (function step() {
+        const k = Math.min(1, (performance.now() - t0) / 450), e = k * k * (3 - 2 * k);
+        lon = l0 + d * e; lat = la0 * (1 - e) + (-4) * e; fov = f0 + (58 - f0) * e;
+        k < 1 ? requestAnimationFrame(step) : res(); })(); });
+    }
+    fade.style.opacity = '1'; await wait(280);
+  }
+  let t; try { t = await tp; } catch (e) { busy = false; fade.style.opacity = '0'; return; }
+  sphere.material.map = t; sphere.material.needsUpdate = true;
+  lon = s.lon; lat = s.lat;
+  fov = 75; camera.fov = fov; camera.updateProjectionMatrix();
+  cur = s; buildHotspots(s); updateUI();
+  fade.style.opacity = '0';
+  document.getElementById('load').classList.add('gone');
+  try { if (location.hash.slice(1) !== id) history.replaceState(null, '', '#' + id); } catch (e) {}
+  s.links.forEach(n => tex(n));   // preload neighbours
+  busy = false;
+}
+function updateUI() {
+  document.getElementById('room').textContent = cur.name;
+  document.getElementById('note').textContent = cur.note || '';
+  document.getElementById('pos').textContent = (SCENES.indexOf(cur) + 1) + ' / ' + SCENES.length;
+  document.querySelectorAll('.pin').forEach(p => p.classList.toggle('on', p.dataset.id === cur.id));
+  document.querySelectorAll('.thumb').forEach(b => {
+    const on = b.dataset.id === cur.id; b.classList.toggle('on', on);
+    if (on) b.scrollIntoView({block: 'nearest', inline: 'nearest', behavior: reduce ? 'auto' : 'smooth'});
+  });
+}
+
+/* ---------- input ---------- */
+const hint = document.getElementById('hint');
+let drag = null; const pts = new Map(); let pinch0 = 0, fov0 = 75;
+stage.addEventListener('pointerdown', e => {
+  stage.setPointerCapture(e.pointerId); pts.set(e.pointerId, {x: e.clientX, y: e.clientY});
+  if (pts.size === 1) { drag = {x: e.clientX, y: e.clientY, lon, lat}; stage.classList.add('drag'); }
+  if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); fov0 = fov; drag = null; }
+  hint.classList.add('gone'); lastInput = performance.now();
+});
+stage.addEventListener('pointermove', e => {
+  if (!pts.has(e.pointerId)) return;
+  pts.set(e.pointerId, {x: e.clientX, y: e.clientY});
+  if (pts.size === 2) { const [a, b] = [...pts.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y); fov = Math.max(35, Math.min(100, fov0 * pinch0 / d)); }
+  else if (drag) {
+    const k = fov / stage.clientHeight;
+    lon = drag.lon - (e.clientX - drag.x) * k; lat = drag.lat + (e.clientY - drag.y) * k;
+  }
+  lastInput = performance.now();
+});
+const up = e => { pts.delete(e.pointerId); if (!pts.size) { drag = null; stage.classList.remove('drag'); } };
+stage.addEventListener('pointerup', up); stage.addEventListener('pointercancel', up);
+stage.addEventListener('wheel', e => { e.preventDefault(); fov = Math.max(35, Math.min(100, fov + e.deltaY * 0.04)); lastInput = performance.now(); }, {passive: false});
+window.addEventListener('keydown', e => {
+  const m = {ArrowLeft: [-6, 0], ArrowRight: [6, 0], ArrowUp: [0, 5], ArrowDown: [0, -5]}[e.key];
+  if (m && e.target === document.body) { lon += m[0]; lat += m[1]; lastInput = performance.now(); e.preventDefault(); }
+});
+
+/* ---------- buttons ---------- */
+const bPlan = document.getElementById('bPlan'), plan = document.getElementById('plan');
+function setPlan(on) { plan.hidden = !on; bPlan.setAttribute('aria-pressed', on); }
+setPlan(window.innerWidth > 640);
+bPlan.onclick = () => setPlan(plan.hidden);
+const bSpin = document.getElementById('bSpin');
+bSpin.onclick = () => { spin = !spin; bSpin.setAttribute('aria-pressed', spin); lastInput = 0; };
+document.getElementById('bFull').onclick = () => {
+  const d = document;
+  try { if (d.fullscreenElement) d.exitFullscreen(); else d.documentElement.requestFullscreen().catch(() => {}); } catch (e) {}
+};
+
+/* ---------- loop ---------- */
+let prev = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - prev) / 1000); prev = now;
+  if (spin && !drag && !busy && now - lastInput > 1500) lon += dt * 4;
+  lat = Math.max(-85, Math.min(85, lat));
+  if (camera.fov !== fov) { camera.fov = fov; camera.updateProjectionMatrix(); }
+  const phi = lon * R, th = lat * R;
+  camera.lookAt(Math.cos(th) * Math.cos(phi), Math.sin(th), Math.cos(th) * Math.sin(phi));
+  renderer.render(scene, camera);
+  placeHotspots(); drawCone();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+function fromHash() { const id = location.hash.slice(1); return BY[id] ? id : 'entrance'; }
+window.addEventListener('hashchange', () => go(fromHash()));
+go(fromHash());
+setTimeout(() => hint.classList.add('gone'), 6000);
+})();
+</script>
+
+</body>
+</html>
